@@ -350,7 +350,7 @@ def build_reading(name: str, birthdate: str, question: str, cards: list[str]) ->
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
     await update.message.reply_text(
-        "🔮 Привет. Я бот-гадалка.\n\n"
+        "🔮 Привет. Я Мария - Таролог и прорицательница.\n\n"
         "Сделаю для тебя расклад на 3 карты.\n"
         "Для начала напиши своё имя."
     )
