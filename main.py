@@ -1,3 +1,10 @@
+from database import (
+    init_db,
+    create_or_update_user,
+    get_free_readings_used,
+    increment_free_readings,
+)
+
 import os
 import random
 import asyncio
