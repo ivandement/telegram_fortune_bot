@@ -178,6 +178,10 @@ ACTION_VARIANTS = [
 ]
 
 
+def get_card_image_path(card_name: str):
+    return os.path.join("cards", f"{card_name}.jpg")
+
+
 def calculate_life_path(birthdate: str) -> int:
     digits = [int(ch) for ch in birthdate if ch.isdigit()]
     total = sum(digits)
@@ -269,20 +273,17 @@ def build_psychological_summary(question: str, cards: list[str], birthdate: str)
 
     if any(marker in card_text for marker in control_markers):
         summary_parts.append(
-            "В раскладе заметна тема внутреннего контроля. Возможно, часть напряжения сейчас связана не только с самой ситуацией, "
-            "но и с тем, что ты очень стараешься удержать предсказуемость там, где всё уже меняется."
+            "В раскладе заметна тема внутреннего контроля. Возможно, часть напряжения сейчас связана не только с самой ситуацией, но и с тем, что ты очень стараешься удержать предсказуемость там, где всё уже меняется."
         )
 
     if any(marker in card_text for marker in fear_markers):
         summary_parts.append(
-            "Здесь также чувствуется слой тревоги, сомнений или накопленной эмоциональной усталости. "
-            "Это не значит, что всё плохо — это значит, что твоя психика давно находится в нагрузке."
+            "Здесь также чувствуется слой тревоги, сомнений или накопленной эмоциональной усталости. Это не значит, что всё плохо — это значит, что твоя психика давно находится в нагрузке."
         )
 
     if any(marker in card_text for marker in transformation_markers):
         summary_parts.append(
-            "Карты показывают, что прежняя форма этой ситуации уже не может остаться совсем такой же. "
-            "Даже если ты пока не готов это признать полностью, процесс изменения уже идет."
+            "Карты показывают, что прежняя форма этой ситуации уже не может остаться совсем такой же. Даже если ты пока не готов это признать полностью, процесс изменения уже идет."
         )
 
     if any(marker in card_text for marker in healing_markers):
@@ -292,18 +293,15 @@ def build_psychological_summary(question: str, cards: list[str], birthdate: str)
 
     if theme == "love":
         summary_parts.append(
-            "Если смотреть на вопрос через призму отношений, то тебе сейчас особенно важно отличать реальную близость от страха потери, "
-            "а искренний отклик — от тревожной привязанности."
+            "Если смотреть на вопрос через призму отношений, то тебе сейчас особенно важно отличать реальную близость от страха потери, а искренний отклик — от тревожной привязанности."
         )
     elif theme == "work":
         summary_parts.append(
-            "Если смотреть на тему работы и самореализации, то расклад показывает: тебе важно не только добиться результата, "
-            "но и не разрушить себя постоянным внутренним давлением."
+            "Если смотреть на тему работы и самореализации, то расклад показывает: тебе важно не только добиться результата, но и не разрушить себя постоянным внутренним давлением."
         )
     elif theme == "anxiety":
         summary_parts.append(
-            "Так как в вопросе уже есть тревожный фон, главный смысл расклада не в том, чтобы напугать тебя, "
-            "а в том, чтобы вернуть тебе внутреннюю опору и ощущение, что ситуация не сильнее тебя."
+            "Так как в вопросе уже есть тревожный фон, главный смысл расклада не в том, чтобы напугать тебя, а в том, чтобы вернуть тебе внутреннюю опору и ощущение, что ситуация не сильнее тебя."
         )
     else:
         summary_parts.append(
@@ -312,13 +310,11 @@ def build_psychological_summary(question: str, cards: list[str], birthdate: str)
 
     if life_path in (2, 6, 9):
         summary_parts.append(
-            "С учетом твоего жизненного пути, ты особенно глубоко проживаешь эмоциональные связи. "
-            "Поэтому для тебя сейчас критично не обесценивать свои чувства, но и не растворяться в них полностью."
+            "С учетом твоего жизненного пути, ты особенно глубоко проживаешь эмоциональные связи. Поэтому для тебя сейчас критично не обесценивать свои чувства, но и не растворяться в них полностью."
         )
     elif life_path in (1, 4, 8):
         summary_parts.append(
-            "С учетом твоего жизненного пути, ты можешь пытаться стабилизировать ситуацию через силу воли и контроль. "
-            "Это частично помогает, но сейчас тебе также нужна мягкость к себе."
+            "С учетом твоего жизненного пути, ты можешь пытаться стабилизировать ситуацию через силу воли и контроль. Это частично помогает, но сейчас тебе также нужна мягкость к себе."
         )
     else:
         summary_parts.append(
@@ -347,15 +343,14 @@ def build_reading(name: str, birthdate: str, question: str, cards: list[str]) ->
         f"{part2}\n\n"
         f"{part3}\n\n"
         f"💫 Глубинный психологический смысл расклада:\n"
-        f"{summary}\n\n"
-
+        f"{summary}"
     )
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
     await update.message.reply_text(
-        "🔮 Привет. Я Мария - Таролог и прорицательница.\n\n"
+        "🔮 Привет. Я бот-гадалка.\n\n"
         "Сделаю для тебя расклад на 3 карты.\n"
         "Для начала напиши своё имя."
     )
@@ -388,6 +383,14 @@ async def get_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ASK_PHOTO
 
 
+async def send_card(update: Update, card_name: str):
+    await update.message.reply_text(f"🃏 {card_name}")
+    image_path = get_card_image_path(card_name)
+    if os.path.exists(image_path):
+        with open(image_path, "rb") as photo:
+            await update.message.reply_photo(photo=photo)
+
+
 async def get_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = update.effective_user.id
     free_readings_used = get_free_readings_used(telegram_id)
@@ -410,13 +413,16 @@ async def get_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cards = random.sample(TAROT_CARDS, 3)
     context.user_data["cards"] = cards
 
-    await update.message.reply_text(f"🃏 Первая карта: {cards[0]}")
+    await update.message.reply_text("🃏 Первая карта:")
+    await send_card(update, cards[0])
     await asyncio.sleep(1.2)
 
-    await update.message.reply_text(f"🃏 Вторая карта: {cards[1]}")
+    await update.message.reply_text("🃏 Вторая карта:")
+    await send_card(update, cards[1])
     await asyncio.sleep(1.2)
 
-    await update.message.reply_text(f"🃏 Третья карта: {cards[2]}")
+    await update.message.reply_text("🃏 Третья карта:")
+    await send_card(update, cards[2])
     await asyncio.sleep(1.2)
 
     reading = build_reading(
