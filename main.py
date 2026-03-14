@@ -1,0 +1,1 @@
+print("Telegram fortune bot project started")
