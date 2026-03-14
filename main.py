@@ -375,6 +375,14 @@ async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def get_birthdate(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["birthdate"] = update.message.text.strip()
+
+    telegram_id = update.effective_user.id
+    create_or_update_user(
+        telegram_id=telegram_id,
+        name=context.user_data["name"],
+        birthdate=context.user_data["birthdate"]
+    )
+
     await update.message.reply_text("💭 Напиши вопрос или ситуацию, которая тебя волнует")
     return ASK_QUESTION
 
@@ -425,6 +433,8 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def main():
+    init_db()
+
     if not BOT_TOKEN:
         raise ValueError("BOT_TOKEN не найден в .env")
 
