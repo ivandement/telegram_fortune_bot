@@ -1,0 +1,8 @@
+.venv
+__pycache__
+.idea
+.env
+.git
+.gitignore
+downloaded_cards
+rename_cards.py

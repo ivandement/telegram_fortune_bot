@@ -1,98 +1,106 @@
-import sqlite3
+import os
+import psycopg
+from dotenv import load_dotenv
 
-DB_NAME = "fortune_bot.db"
+load_dotenv()
+
+DB_HOST = os.getenv("DB_HOST", "db")
+DB_PORT = os.getenv("DB_PORT", "5432")
+DB_NAME = os.getenv("DB_NAME", "fortune_bot")
+DB_USER = os.getenv("DB_USER", "fortune_user")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "fortune_password")
 
 
 def get_connection():
-    return sqlite3.connect(DB_NAME)
+    return psycopg.connect(
+        host=DB_HOST,
+        port=DB_PORT,
+        dbname=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD,
+    )
 
 
 def init_db():
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        telegram_id INTEGER UNIQUE NOT NULL,
-        name TEXT,
-        birthdate TEXT,
-        free_readings_used INTEGER DEFAULT 0
-    )
-    """)
-
-    conn.commit()
-    conn.close()
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id SERIAL PRIMARY KEY,
+                telegram_id BIGINT UNIQUE NOT NULL,
+                name TEXT,
+                birthdate TEXT,
+                free_readings_used INTEGER DEFAULT 0
+            )
+            """)
+        conn.commit()
 
 
 def get_user(telegram_id: int):
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    cursor.execute(
-        "SELECT telegram_id, name, birthdate, free_readings_used FROM users WHERE telegram_id = ?",
-        (telegram_id,)
-    )
-    user = cursor.fetchone()
-    conn.close()
-    return user
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT telegram_id, name, birthdate, free_readings_used
+                FROM users
+                WHERE telegram_id = %s
+                """,
+                (telegram_id,)
+            )
+            return cursor.fetchone()
 
 
 def create_or_update_user(telegram_id: int, name: str, birthdate: str):
-    conn = get_connection()
-    cursor = conn.cursor()
-
     existing_user = get_user(telegram_id)
 
-    if existing_user:
-        cursor.execute(
-            """
-            UPDATE users
-            SET name = ?, birthdate = ?
-            WHERE telegram_id = ?
-            """,
-            (name, birthdate, telegram_id)
-        )
-    else:
-        cursor.execute(
-            """
-            INSERT INTO users (telegram_id, name, birthdate, free_readings_used)
-            VALUES (?, ?, ?, 0)
-            """,
-            (telegram_id, name, birthdate)
-        )
-
-    conn.commit()
-    conn.close()
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            if existing_user:
+                cursor.execute(
+                    """
+                    UPDATE users
+                    SET name = %s, birthdate = %s
+                    WHERE telegram_id = %s
+                    """,
+                    (name, birthdate, telegram_id)
+                )
+            else:
+                cursor.execute(
+                    """
+                    INSERT INTO users (telegram_id, name, birthdate, free_readings_used)
+                    VALUES (%s, %s, %s, 0)
+                    """,
+                    (telegram_id, name, birthdate)
+                )
+        conn.commit()
 
 
 def increment_free_readings(telegram_id: int):
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    cursor.execute(
-        """
-        UPDATE users
-        SET free_readings_used = free_readings_used + 1
-        WHERE telegram_id = ?
-        """,
-        (telegram_id,)
-    )
-
-    conn.commit()
-    conn.close()
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE users
+                SET free_readings_used = free_readings_used + 1
+                WHERE telegram_id = %s
+                """,
+                (telegram_id,)
+            )
+        conn.commit()
 
 
 def get_free_readings_used(telegram_id: int) -> int:
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    cursor.execute(
-        "SELECT free_readings_used FROM users WHERE telegram_id = ?",
-        (telegram_id,)
-    )
-    result = cursor.fetchone()
-    conn.close()
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT free_readings_used
+                FROM users
+                WHERE telegram_id = %s
+                """,
+                (telegram_id,)
+            )
+            result = cursor.fetchone()
 
     if result:
         return result[0]

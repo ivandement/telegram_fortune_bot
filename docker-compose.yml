@@ -1,0 +1,27 @@
+services:
+  bot:
+    build: .
+    container_name: fortune-bot
+    env_file:
+      - .env
+    depends_on:
+      - db
+    volumes:
+      - ./:/app
+    restart: unless-stopped
+
+  db:
+    image: postgres:16
+    container_name: fortune-postgres
+    environment:
+      POSTGRES_DB: fortune_bot
+      POSTGRES_USER: fortune_user
+      POSTGRES_PASSWORD: fortune_password
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
