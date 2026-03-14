@@ -105,3 +105,64 @@ def get_free_readings_used(telegram_id: int) -> int:
     if result:
         return result[0]
     return 0
+
+
+def get_coins_balance(telegram_id: int) -> int:
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT coins_balance
+                FROM users
+                WHERE telegram_id = %s
+                """,
+                (telegram_id,)
+            )
+            result = cursor.fetchone()
+
+    if result:
+        return result[0]
+    return 0
+
+
+def add_coins(telegram_id: int, amount: int):
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE users
+                SET coins_balance = coins_balance + %s
+                WHERE telegram_id = %s
+                """,
+                (amount, telegram_id)
+            )
+        conn.commit()
+
+
+def spend_coin(telegram_id: int) -> bool:
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT coins_balance
+                FROM users
+                WHERE telegram_id = %s
+                """,
+                (telegram_id,)
+            )
+            result = cursor.fetchone()
+
+            if not result or result[0] <= 0:
+                return False
+
+            cursor.execute(
+                """
+                UPDATE users
+                SET coins_balance = coins_balance - 1
+                WHERE telegram_id = %s
+                """,
+                (telegram_id,)
+            )
+
+        conn.commit()
+    return True

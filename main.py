@@ -18,6 +18,9 @@ from database import (
     create_or_update_user,
     get_free_readings_used,
     increment_free_readings,
+    get_coins_balance,
+    spend_coin,
+
 )
 
 load_dotenv()
@@ -356,6 +359,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return ASK_NAME
 
+async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    telegram_id = update.effective_user.id
+    coins = get_coins_balance(telegram_id)
+
+    await update.message.reply_text(
+        f"🪙 Твой баланс монет: {coins}\n"
+        f"1 монета = 1 расклад"
+    )
+
+
 
 async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["name"] = update.message.text.strip()
@@ -396,11 +409,23 @@ async def get_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     free_readings_used = get_free_readings_used(telegram_id)
 
     if free_readings_used >= 3:
-        await update.message.reply_text(
-            "💳 Ты уже использовал 3 бесплатных расклада.\n"
-            "Бесплатный лимит исчерпан."
-        )
-        return ConversationHandler.END
+        coins = get_coins_balance(telegram_id)
+
+        if coins <= 0:
+            await update.message.reply_text(
+                "💳 Ты уже использовал 3 бесплатных расклада.\n"
+                "У тебя нет монет для нового расклада.\n\n"
+                "Проверь баланс командой /balance"
+            )
+            return ConversationHandler.END
+
+        spent = spend_coin(telegram_id)
+        if not spent:
+            await update.message.reply_text(
+                "❌ Не удалось списать монету.\n"
+                "Проверь баланс командой /balance"
+            )
+            return ConversationHandler.END
 
     context.user_data["photo_received"] = True
 
@@ -432,12 +457,16 @@ async def get_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cards=cards
     )
 
-    increment_free_readings(telegram_id)
+    if free_readings_used < 3:
+        increment_free_readings(telegram_id)
+
     used_after = get_free_readings_used(telegram_id)
     left = max(0, 3 - used_after)
+    coins_now = get_coins_balance(telegram_id)
 
     await update.message.reply_text(reading)
     await update.message.reply_text(f"🎁 Бесплатных раскладов осталось: {left}")
+    await update.message.reply_text(f"🪙 Баланс монет: {coins_now}")
     await update.message.reply_text("🔁 Для нового расклада снова напиши /start")
     return ConversationHandler.END
 
@@ -468,6 +497,8 @@ def main():
     )
 
     app.add_handler(conv_handler)
+    app.add_handler(CommandHandler("balance", balance))
+
 
     print("Bot is running...")
     app.run_polling()
