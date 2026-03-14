@@ -3,13 +3,22 @@ import random
 import asyncio
 
 from dotenv import load_dotenv
-from telegram import Update
+from telegram import (
+    Update,
+    LabeledPrice,
+    ReplyKeyboardMarkup,
+    KeyboardButton,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+)
 from telegram.ext import (
     Application,
     CommandHandler,
     MessageHandler,
     ConversationHandler,
     ContextTypes,
+    PreCheckoutQueryHandler,
+    CallbackQueryHandler,
     filters,
 )
 
@@ -19,8 +28,9 @@ from database import (
     get_free_readings_used,
     increment_free_readings,
     get_coins_balance,
+    add_coins,
     spend_coin,
-
+    save_payment,
 )
 
 load_dotenv()
@@ -28,33 +38,52 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 ASK_NAME, ASK_BIRTHDATE, ASK_QUESTION, ASK_PHOTO = range(4)
 
+COIN_PACKAGES = {
+    "coins_1": {"title": "1 монета", "coins": 1, "stars": 25},
+    "coins_5": {"title": "5 монет", "coins": 5, "stars": 99},
+    "coins_12": {"title": "12 монет", "coins": 12, "stars": 199},
+    "coins_25": {"title": "25 монет", "coins": 25, "stars": 399},
+}
+
+MAIN_MENU = ReplyKeyboardMarkup(
+    [
+        [KeyboardButton("🔮 Начать расклад"), KeyboardButton("🪙 Баланс")],
+        [KeyboardButton("⭐ Купить монеты"), KeyboardButton("ℹ️ Помощь")],
+    ],
+    resize_keyboard=True
+)
+
+PHOTO_MENU = ReplyKeyboardMarkup(
+    [
+        [KeyboardButton("📷 Пропустить фото")],
+        [KeyboardButton("🔮 Начать расклад"), KeyboardButton("🪙 Баланс")],
+        [KeyboardButton("⭐ Купить монеты"), KeyboardButton("ℹ️ Помощь")],
+    ],
+    resize_keyboard=True
+)
+
 TAROT_CARDS = [
-    # Старшие арканы
     "Шут", "Маг", "Верховная Жрица", "Императрица", "Император",
     "Иерофант", "Влюбленные", "Колесница", "Сила", "Отшельник",
     "Колесо Фортуны", "Справедливость", "Повешенный", "Смерть",
     "Умеренность", "Дьявол", "Башня", "Звезда", "Луна", "Солнце",
     "Суд", "Мир",
 
-    # Жезлы
     "Туз Жезлов", "Двойка Жезлов", "Тройка Жезлов", "Четверка Жезлов",
     "Пятерка Жезлов", "Шестерка Жезлов", "Семерка Жезлов", "Восьмерка Жезлов",
     "Девятка Жезлов", "Десятка Жезлов", "Паж Жезлов", "Рыцарь Жезлов",
     "Королева Жезлов", "Король Жезлов",
 
-    # Кубки
     "Туз Кубков", "Двойка Кубков", "Тройка Кубков", "Четверка Кубков",
     "Пятерка Кубков", "Шестерка Кубков", "Семерка Кубков", "Восьмерка Кубков",
     "Девятка Кубков", "Десятка Кубков", "Паж Кубков", "Рыцарь Кубков",
     "Королева Кубков", "Король Кубков",
 
-    # Мечи
     "Туз Мечей", "Двойка Мечей", "Тройка Мечей", "Четверка Мечей",
     "Пятерка Мечей", "Шестерка Мечей", "Семерка Мечей", "Восьмерка Мечей",
     "Девятка Мечей", "Десятка Мечей", "Паж Мечей", "Рыцарь Мечей",
     "Королева Мечей", "Король Мечей",
 
-    # Пентакли
     "Туз Пентаклей", "Двойка Пентаклей", "Тройка Пентаклей", "Четверка Пентаклей",
     "Пятерка Пентаклей", "Шестерка Пентаклей", "Семерка Пентаклей", "Восьмерка Пентаклей",
     "Девятка Пентаклей", "Десятка Пентаклей", "Паж Пентаклей", "Рыцарь Пентаклей",
@@ -353,26 +382,157 @@ def build_reading(name: str, birthdate: str, question: str, cards: list[str]) ->
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
     await update.message.reply_text(
-        "🔮 Привет. Я Мария - Таролог и прорицательница.\n\n"
-        "Сделаю для тебя расклад на 3 карты.\n"
-        "Для начала напиши своё имя."
+        "🔮 Привет. Я Мария — таролог и прорицательница.\n\n"
+        "Я могу сделать для тебя расклад на 3 карты, показать баланс монет и помочь купить новые.\n\n"
+        "Выбери действие кнопками ниже.",
+        reply_markup=MAIN_MENU
     )
-    return ASK_NAME
+    return ConversationHandler.END
+
+
+async def help_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "ℹ️ Что умеет бот:\n\n"
+        "🔮 Начать расклад — новый расклад на 3 карты\n"
+        "🪙 Баланс — посмотреть бесплатные расклады и монеты\n"
+        "⭐ Купить монеты — открыть пакеты монет\n"
+        "📷 Фото можно пропустить на последнем шаге\n\n"
+        "После 3 бесплатных раскладов используется 1 монета за 1 расклад.",
+        reply_markup=MAIN_MENU
+    )
+
 
 async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = update.effective_user.id
     coins = get_coins_balance(telegram_id)
+    free_used = get_free_readings_used(telegram_id)
+    free_left = max(0, 3 - free_used)
 
     await update.message.reply_text(
         f"🪙 Твой баланс монет: {coins}\n"
-        f"1 монета = 1 расклад"
+        f"🎁 Бесплатных раскладов осталось: {free_left}\n"
+        f"1 монета = 1 расклад",
+        reply_markup=MAIN_MENU
     )
 
+
+async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("1 монета — 25 ⭐", callback_data="buy_coins_1")],
+        [InlineKeyboardButton("5 монет — 99 ⭐", callback_data="buy_coins_5")],
+        [InlineKeyboardButton("12 монет — 199 ⭐", callback_data="buy_coins_12")],
+        [InlineKeyboardButton("25 монет — 399 ⭐", callback_data="buy_coins_25")],
+    ])
+
+    await update.message.reply_text(
+        "⭐ Выбери пакет монет:",
+        reply_markup=keyboard
+    )
+
+
+async def send_stars_invoice(update: Update, package_key: str):
+    package = COIN_PACKAGES[package_key]
+
+    try:
+        await update.message.reply_invoice(
+            title=package["title"],
+            description=f"{package['coins']} монет для раскладов",
+            payload=package_key,
+            currency="XTR",
+            prices=[LabeledPrice(label=package["title"], amount=package["stars"])],
+            provider_token="",
+            start_parameter=package_key,
+        )
+    except Exception as e:
+        await update.message.reply_text(f"❌ Не удалось открыть оплату: {e}")
+
+
+async def buy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    mapping = {
+        "buy_coins_1": "coins_1",
+        "buy_coins_5": "coins_5",
+        "buy_coins_12": "coins_12",
+        "buy_coins_25": "coins_25",
+    }
+
+    package_key = mapping.get(query.data)
+    if not package_key:
+        await query.message.reply_text("❌ Неизвестный пакет.")
+        return
+
+    package = COIN_PACKAGES[package_key]
+
+    try:
+        await query.message.reply_invoice(
+            title=package["title"],
+            description=f"{package['coins']} монет для раскладов",
+            payload=package_key,
+            currency="XTR",
+            prices=[LabeledPrice(label=package["title"], amount=package["stars"])],
+            provider_token="",
+            start_parameter=package_key,
+        )
+    except Exception as e:
+        await query.message.reply_text(f"❌ Не удалось открыть оплату: {e}")
+
+
+async def buy1(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await send_stars_invoice(update, "coins_1")
+
+
+async def buy5(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await send_stars_invoice(update, "coins_5")
+
+
+async def buy12(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await send_stars_invoice(update, "coins_12")
+
+
+async def buy25(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await send_stars_invoice(update, "coins_25")
+
+
+async def precheckout_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.pre_checkout_query
+    await query.answer(ok=True)
+
+
+async def successful_payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    payment = update.message.successful_payment
+    telegram_id = update.effective_user.id
+
+    package_key = payment.invoice_payload
+    package = COIN_PACKAGES.get(package_key)
+
+    if not package:
+        await update.message.reply_text("❌ Ошибка пакета оплаты.", reply_markup=MAIN_MENU)
+        return
+
+    add_coins(telegram_id, package["coins"])
+    save_payment(
+        telegram_id=telegram_id,
+        package_name=package["title"],
+        coins_amount=package["coins"],
+        stars_amount=package["stars"],
+        charge_id=payment.telegram_payment_charge_id,
+    )
+
+    balance_now = get_coins_balance(telegram_id)
+
+    await update.message.reply_text(
+        f"✅ Оплата прошла успешно.\n"
+        f"Начислено монет: {package['coins']}\n"
+        f"🪙 Текущий баланс: {balance_now}",
+        reply_markup=MAIN_MENU
+    )
 
 
 async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["name"] = update.message.text.strip()
-    await update.message.reply_text("📅 Теперь отправь дату рождения в формате ДД.ММ.ГГГГ")
+    await update.message.reply_text("📅 Теперь отправь дату рождения в формате ДД.ММ.ГГГГ", reply_markup=MAIN_MENU)
     return ASK_BIRTHDATE
 
 
@@ -386,13 +546,17 @@ async def get_birthdate(update: Update, context: ContextTypes.DEFAULT_TYPE):
         birthdate=context.user_data["birthdate"]
     )
 
-    await update.message.reply_text("💭 Напиши вопрос или ситуацию, которая тебя волнует")
+    await update.message.reply_text("💭 Напиши вопрос или ситуацию, которая тебя волнует", reply_markup=MAIN_MENU)
     return ASK_QUESTION
 
 
 async def get_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["question"] = update.message.text.strip()
-    await update.message.reply_text("📸 Теперь отправь фото")
+    await update.message.reply_text(
+        "📸 Теперь отправь фото.\n"
+        "Если не хочешь отправлять фото, нажми «📷 Пропустить фото».",
+        reply_markup=PHOTO_MENU
+    )
     return ASK_PHOTO
 
 
@@ -404,7 +568,7 @@ async def send_card(update: Update, card_name: str):
             await update.message.reply_photo(photo=photo)
 
 
-async def get_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def process_reading(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = update.effective_user.id
     free_readings_used = get_free_readings_used(telegram_id)
 
@@ -415,7 +579,9 @@ async def get_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(
                 "💳 Ты уже использовал 3 бесплатных расклада.\n"
                 "У тебя нет монет для нового расклада.\n\n"
-                "Проверь баланс командой /balance"
+                "Проверь баланс кнопкой «🪙 Баланс»\n"
+                "Купить монеты: кнопка «⭐ Купить монеты»",
+                reply_markup=MAIN_MENU
             )
             return ConversationHandler.END
 
@@ -423,11 +589,10 @@ async def get_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not spent:
             await update.message.reply_text(
                 "❌ Не удалось списать монету.\n"
-                "Проверь баланс командой /balance"
+                "Проверь баланс кнопкой «🪙 Баланс»",
+                reply_markup=MAIN_MENU
             )
             return ConversationHandler.END
-
-    context.user_data["photo_received"] = True
 
     await update.message.reply_text("✨ Я чувствую твою энергию...")
     await asyncio.sleep(1.3)
@@ -464,16 +629,56 @@ async def get_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     left = max(0, 3 - used_after)
     coins_now = get_coins_balance(telegram_id)
 
-    await update.message.reply_text(reading)
+    await update.message.reply_text(reading, reply_markup=MAIN_MENU)
     await update.message.reply_text(f"🎁 Бесплатных раскладов осталось: {left}")
     await update.message.reply_text(f"🪙 Баланс монет: {coins_now}")
-    await update.message.reply_text("🔁 Для нового расклада снова напиши /start")
+    await update.message.reply_text("🔁 Для нового расклада снова нажми кнопку «🔮 Начать расклад».", reply_markup=MAIN_MENU)
+    return ConversationHandler.END
+
+
+async def get_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["photo_received"] = True
+    return await process_reading(update, context)
+
+
+async def skip_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["photo_received"] = False
+    return await process_reading(update, context)
+
+
+async def menu_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+
+    if text == "🔮 Начать расклад":
+        context.user_data.clear()
+        await update.message.reply_text("Напиши своё имя.", reply_markup=MAIN_MENU)
+        return ASK_NAME
+
+    if text == "🪙 Баланс":
+        await balance(update, context)
+        return ConversationHandler.END
+
+    if text == "⭐ Купить монеты":
+        await buy(update, context)
+        return ConversationHandler.END
+
+    if text == "ℹ️ Помощь":
+        await help_menu(update, context)
+        return ConversationHandler.END
+
+    if text == "📷 Пропустить фото":
+        return await skip_photo(update, context)
+
+    await update.message.reply_text(
+        "Выбери действие кнопками ниже.",
+        reply_markup=MAIN_MENU
+    )
     return ConversationHandler.END
 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
-    await update.message.reply_text("Расклад отменён.")
+    await update.message.reply_text("Расклад отменён.", reply_markup=MAIN_MENU)
     return ConversationHandler.END
 
 
@@ -485,20 +690,48 @@ def main():
 
     app = Application.builder().token(BOT_TOKEN).build()
 
+    menu_pattern = "^(🔮 Начать расклад|🪙 Баланс|⭐ Купить монеты|ℹ️ Помощь)$"
+    photo_menu_pattern = "^(📷 Пропустить фото|🔮 Начать расклад|🪙 Баланс|⭐ Купить монеты|ℹ️ Помощь)$"
+
     conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("start", start)],
+        entry_points=[
+            CommandHandler("start", start),
+            MessageHandler(filters.Regex("^🔮 Начать расклад$"), menu_router),
+        ],
         states={
-            ASK_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_name)],
-            ASK_BIRTHDATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_birthdate)],
-            ASK_QUESTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_question)],
-            ASK_PHOTO: [MessageHandler(filters.PHOTO, get_photo)],
+            ASK_NAME: [
+                MessageHandler(filters.Regex(menu_pattern), menu_router),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, get_name),
+            ],
+            ASK_BIRTHDATE: [
+                MessageHandler(filters.Regex(menu_pattern), menu_router),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, get_birthdate),
+            ],
+            ASK_QUESTION: [
+                MessageHandler(filters.Regex(menu_pattern), menu_router),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, get_question),
+            ],
+            ASK_PHOTO: [
+                MessageHandler(filters.Regex(photo_menu_pattern), menu_router),
+                MessageHandler(filters.PHOTO, get_photo),
+            ],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
     )
 
     app.add_handler(conv_handler)
     app.add_handler(CommandHandler("balance", balance))
-
+    app.add_handler(CommandHandler("buy", buy))
+    app.add_handler(CommandHandler("help", help_menu))
+    app.add_handler(CommandHandler("buy1", buy1))
+    app.add_handler(CommandHandler("buy5", buy5))
+    app.add_handler(CommandHandler("buy12", buy12))
+    app.add_handler(CommandHandler("buy25", buy25))
+    app.add_handler(CallbackQueryHandler(buy_callback, pattern="^buy_coins_"))
+    app.add_handler(PreCheckoutQueryHandler(precheckout_callback))
+    app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_callback))
+    app.add_handler(MessageHandler(filters.Regex(menu_pattern), menu_router))
+    app.add_handler(MessageHandler(filters.Regex("^📷 Пропустить фото$"), menu_router))
 
     print("Bot is running...")
     app.run_polling()

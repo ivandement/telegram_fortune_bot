@@ -166,3 +166,17 @@ def spend_coin(telegram_id: int) -> bool:
 
         conn.commit()
     return True
+
+def save_payment(telegram_id: int, package_name: str, coins_amount: int, stars_amount: int, charge_id: str):
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO payments (
+                    telegram_id, package_name, coins_amount, stars_amount, telegram_payment_charge_id
+                )
+                VALUES (%s, %s, %s, %s, %s)
+                """,
+                (telegram_id, package_name, coins_amount, stars_amount, charge_id)
+            )
+        conn.commit()
