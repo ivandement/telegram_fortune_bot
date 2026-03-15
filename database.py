@@ -55,7 +55,7 @@ def init_db():
             CREATE TABLE IF NOT EXISTS readings (
                 id SERIAL PRIMARY KEY,
                 telegram_id BIGINT NOT NULL,
-                service_type TEXT NOT NULL,
+                service_type TEXT DEFAULT 'tarot',
                 user_name TEXT,
                 birthdate TEXT,
                 question TEXT,

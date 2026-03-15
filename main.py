@@ -209,8 +209,12 @@ async def run_chat_completion(messages: list[dict], model: str, max_tokens: int 
             max_tokens=max_tokens,
         )
 
-    response = await asyncio.to_thread(_call)
-    return response.choices[0].message.content.strip()
+    try:
+        response = await asyncio.wait_for(asyncio.to_thread(_call), timeout=20)
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        print("CHAT COMPLETION ERROR:", e)
+        raise
 
 
 async def run_vision_completion(prompt: str, image_url: str) -> str:
@@ -229,8 +233,12 @@ async def run_vision_completion(prompt: str, image_url: str) -> str:
             ],
         )
 
-    response = await asyncio.to_thread(_call)
-    return response.output_text.strip()
+    try:
+        response = await asyncio.wait_for(asyncio.to_thread(_call), timeout=25)
+        return response.output_text.strip()
+    except Exception as e:
+        print("VISION COMPLETION ERROR:", e)
+        raise
 
 
 async def generate_tarot_answer(name: str, birthdate: str, question: str, cards: list[str], history: list[tuple[str, str]]) -> str:
@@ -312,19 +320,38 @@ async def generate_photo_answer(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def generate_followup_answer(telegram_id: int, service_type: str, followup_text: str) -> str:
     history = get_recent_messages(telegram_id, service_type, limit=12)
+
     messages = [{"role": "system", "content": current_system_prompt(service_type)}]
+
     for role, content in history:
         messages.append({"role": role, "content": content})
+
     messages.append(
         {
             "role": "user",
             "content": (
                 f"Это уточняющий вопрос по прошлому разбору: {followup_text}\n\n"
-                "Ответь только по текущему контексту и завершай блоком 'Что важно сейчас'."
+                "Ответь мягко, по-человечески, от имени Марии в женском роде. "
+                "Не повторяй весь прошлый расклад заново. "
+                "Дай именно уточнение и закончи блоком 'Что важно сейчас'."
             ),
         }
     )
-    return await run_chat_completion(messages, GROQ_TEXT_MODEL, max_tokens=700)
+
+    return await run_chat_completion(messages, GROQ_TEXT_MODEL, max_tokens=500)
+
+
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    print("UNHANDLED ERROR:", context.error)
+
+    try:
+        if isinstance(update, Update) and update.effective_message:
+            await update.effective_message.reply_text(
+                "⚠️ Во время ответа произошла ошибка. Попробуй ещё раз.",
+                reply_markup=MAIN_MENU
+            )
+    except Exception as e:
+        print("ERROR HANDLER FAILED:", e)
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -647,20 +674,46 @@ async def process_service(update: Update, context: ContextTypes.DEFAULT_TYPE):
             answer = "⚠️ Неизвестный режим."
     except Exception as e:
         print("AI ERROR:", e)
+
         if service_type == SERVICE_TAROT:
             answer = (
-                f"🔮 {name}, я увидела в твоём раскладе сильный переходный этап.\n\n"
-                f"Твои карты: {cards_text or 'не определены'}.\n"
-                f"Сейчас для тебя важно не торопить события и внимательно смотреть на свои чувства.\n\n"
+                f"🔮 {name}, я увидела твой расклад и уже могу мягко подсветить главное.\n\n"
+                f"Выпавшие карты: {cards_text or 'не определены'}.\n\n"
+                f"Сейчас в твоей ситуации есть тема созревания, внутренней подготовки и выхода к более устойчивому этапу. "
+                f"Ответ на вопрос «{question}» не выглядит как мгновенный рывок, но карты показывают, что движение идёт.\n\n"
                 f"Что важно сейчас:\n"
-                f"Доверься процессу, но не теряй внутреннюю опору."
+                f"Не дави на события. Твой путь идёт через постепенность, укрепление опоры и зрелое решение."
             )
+
+        elif service_type == SERVICE_ASTRO:
+            answer = (
+                f"🌙 {name}, я чувствую, что твой текущий период связан с внутренней перенастройкой и ожиданием важного поворота.\n\n"
+                f"По твоей дате рождения видно, что тебе сейчас важно не торопить будущее, а выстраивать почву под него.\n\n"
+                f"Что важно сейчас:\n"
+                f"Собери внутреннюю опору и не пытайся вытянуть ответ силой."
+            )
+
+        elif service_type == SERVICE_NATAL:
+            answer = (
+                f"🪐 {name}, я сейчас не смогла углубить натальный разбор через ИИ, "
+                f"но по твоим данным чувствуется сильная тема судьбоносного взросления и важного личного выбора.\n\n"
+                f"Что важно сейчас:\n"
+                f"Не сомневайся в своём пути слишком сильно. Сейчас тебе важнее точность и честность с собой."
+            )
+
+        elif service_type == SERVICE_PHOTO:
+            answer = (
+                f"📷 {name}, я не смогла закончить глубокий разбор по фото через ИИ, "
+                f"но чувствую, что твой образ сейчас показывает внутреннюю собранность и скрытое напряжение.\n\n"
+                f"Что важно сейчас:\n"
+                f"Дай себе больше воздуха и не неси всё в одиночку."
+            )
+
         else:
             answer = (
-                f"🔮 {name}, я сейчас не смогла сделать глубокий ИИ-разбор, "
-                f"но чувствую, что твой запрос требует мягкости, внимания к себе и спокойствия.\n\n"
+                f"🔮 {name}, я почувствовала твой запрос, но не смогла сейчас завершить глубокий разбор.\n\n"
                 f"Что важно сейчас:\n"
-                f"Не требуй от себя мгновенных ответов."
+                f"Сделай шаг назад, выдохни и вернись к вопросу чуть позже."
             )
 
     save_reading(
@@ -681,11 +734,12 @@ async def process_service(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(answer, reply_markup=FOLLOWUP_MENU)
     await update.message.reply_text(
         f"🎁 Бесплатных услуг осталось: {left}\n"
-        f"🪙 Монет: {coins_now}",
+        f"🪙 Монет: {coins_now}\n\n"
+        f"Ты можешь сразу написать уточняющий вопрос по этому разбору.",
         reply_markup=FOLLOWUP_MENU
     )
     context.user_data["followup_enabled"] = True
-    return ConversationHandler.END
+    return FOLLOWUP
 
 
 async def ask_followup(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -708,26 +762,44 @@ async def handle_followup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     service_type = context.user_data.get("service_type")
 
     if not service_type:
-        await update.message.reply_text("Сначала получи основной разбор.", reply_markup=MAIN_MENU)
+        await update.message.reply_text(
+            "Сначала получи основной разбор.",
+            reply_markup=MAIN_MENU
+        )
         return ConversationHandler.END
 
     followup_text = update.message.text.strip()
-    save_message(telegram_id, service_type, "user", followup_text)
 
     await update.message.reply_text("✨ Я уточняю твой прошлый разбор...")
+
     try:
-        answer = await generate_followup_answer(telegram_id, service_type, followup_text)
-    except Exception as e:
-        print("FOLLOWUP ERROR:", e)
-        answer = (
-            "Я почувствовала твой уточняющий вопрос, но сейчас не смогла углубить ответ так, как хотела.\n\n"
-            "Что важно сейчас:\n"
-            "Вернись к своему основному запросу и попробуй задать вопрос чуть конкретнее."
+        save_message(telegram_id, service_type, "user", followup_text)
+
+        answer = await generate_followup_answer(
+            telegram_id=telegram_id,
+            service_type=service_type,
+            followup_text=followup_text
         )
 
-    save_message(telegram_id, service_type, "assistant", answer)
-    await update.message.reply_text(answer, reply_markup=FOLLOWUP_MENU)
-    return ConversationHandler.END
+        save_message(telegram_id, service_type, "assistant", answer)
+
+        await update.message.reply_text(answer, reply_markup=FOLLOWUP_MENU)
+        return FOLLOWUP
+
+    except Exception as e:
+        print("FOLLOWUP ERROR:", e)
+
+        fallback_answer = (
+            "Я почувствовала твой уточняющий вопрос.\n\n"
+            f"Ты спросил: {followup_text}\n\n"
+            "Сейчас я бы советовала не искать мгновенный ответ, а посмотреть, "
+            "какой маленький шаг ты можешь сделать уже сегодня.\n\n"
+            "Что важно сейчас:\n"
+            "Сосредоточься не на страхе будущего, а на ближайшем понятном действии."
+        )
+
+        await update.message.reply_text(fallback_answer, reply_markup=FOLLOWUP_MENU)
+        return FOLLOWUP
 
 
 async def menu_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -836,6 +908,8 @@ def main():
     app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_callback))
     app.add_handler(MessageHandler(filters.Regex(menu_pattern), menu_router))
     app.add_handler(MessageHandler(filters.Regex(r"^📷 Пропустить фото$"), menu_router))
+
+    app.add_error_handler(error_handler)
 
     print("Bot is running...")
     app.run_polling(drop_pending_updates=True)
